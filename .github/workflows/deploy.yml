@@ -1,11 +1,9 @@
-name: Deploy Slidev to GitHub Pages
+name: Deploy pages
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -22,96 +20,37 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Detect package manager
-        id: package-manager
-        shell: bash
-        run: |
-          if [[ -f pnpm-lock.yaml ]]; then
-            echo "name=pnpm" >> "$GITHUB_OUTPUT"
-          elif [[ -f yarn.lock ]]; then
-            echo "name=yarn" >> "$GITHUB_OUTPUT"
-          elif [[ -f bun.lock || -f bun.lockb ]]; then
-            echo "name=bun" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=npm" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Setup Node.js
-        if: steps.package-manager.outputs.name != 'bun'
-        uses: actions/setup-node@v6
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@b5d848f5a62488f3d3d920f8aa6ac318a60c5f07 # v1
         with:
-          node-version: lts/*
+          version: "0.1.11"
+          node-version: "24.14.0"
+          cache: true
+          run-install: false
 
-      - name: Setup pnpm
-        if: steps.package-manager.outputs.name == 'pnpm'
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - name: Install deps
+        run: vp install --frozen-lockfile
 
-      - name: Enable Corepack
-        if: steps.package-manager.outputs.name == 'yarn'
-        run: corepack enable
-
-      - name: Setup Bun
-        if: steps.package-manager.outputs.name == 'bun'
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          case "${{ steps.package-manager.outputs.name }}" in
-            pnpm) pnpm install --frozen-lockfile ;;
-            yarn) yarn install --frozen-lockfile ;;
-            bun) bun install --frozen-lockfile ;;
-            npm)
-              if [[ -f package-lock.json ]]; then
-                npm ci
-              else
-                npm install
-              fi
-              ;;
-          esac
-
-      - name: Build Slidev
-        shell: bash
-        env:
-          PACKAGE_MANAGER: ${{ steps.package-manager.outputs.name }}
-          REPOSITORY_NAME: ${{ github.event.repository.name }}
-        run: |
-          if [[ "$REPOSITORY_NAME" == *.github.io ]]; then
-            BASE_PATH="/"
-          else
-            BASE_PATH="/$REPOSITORY_NAME/"
-          fi
-
-          case "$PACKAGE_MANAGER" in
-            pnpm) pnpm run build --base "$BASE_PATH" ;;
-            yarn) yarn run build --base "$BASE_PATH" ;;
-            bun) bun run build --base "$BASE_PATH" ;;
-            npm) npm run build -- --base "$BASE_PATH" ;;
-          esac
+      - name: Build
+        run: vp run build --base ./
 
       - name: Setup Pages
-        uses: actions/configure-pages@v6
-        with:
-          enablement: true
+        uses: actions/configure-pages@v4
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4
